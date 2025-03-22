@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResumeAI - Smart Resume Analysis Platform</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .drag-area { border: 2px dashed #4F46E5; }
+        .drag-area.active { border-color: #10B981; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app" class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <span class="text-2xl font-bold text-indigo-600">ResumeAI</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <template v-if="isLoggedIn">
+                            <span class="text-gray-700">Welcome, {{ user.email }}</span>
+                            <button @click="logout" class="text-sm font-medium text-gray-700 hover:text-indigo-600">Logout</button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Login/Register Form -->
+            <div v-if="!isLoggedIn" class="max-w-md mx-auto bg-white rounded-lg shadow-sm p-8">
+                <h2 class="text-2xl font-bold mb-6">{{ isLoginView ? 'Login' : 'Register' }}</h2>
+                <form @submit.prevent="handleAuth">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Email</label>
+                            <input type="email" v-model="authForm.email" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" v-model="authForm.password" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700">
+                            {{ isLoginView ? 'Login' : 'Register' }}
+                        </button>
+                        <p class="text-center text-sm">
+                            <a href="#" @click.prevent="toggleAuthView" class="text-indigo-600 hover:text-indigo-500">
+                                {{ isLoginView ? 'Need an account? Register' : 'Already have an account? Login' }}
+                            </a>
+                        </p>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Dashboard -->
+            <div v-else class="space-y-6">
+                <!-- Upload Section -->
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-xl font-semibold mb-4">Upload Resumes</h2>
+                    <div @dragover.prevent="handleDragOver" 
+                         @drop.prevent="handleDrop"
+                         @click="triggerFileInput"
+                         class="drag-area p-8 rounded-lg text-center cursor-pointer">
+                        <i class="bi bi-cloud-upload text-4xl text-indigo-600"></i>
+                        <p class="mt-2 text-gray-600">Drag & drop resumes here or click to browse</p>
+                        <input type="file" ref="fileInput" @change="handleFileSelect" multiple accept=".pdf,.doc,.docx" class="hidden">
+                    </div>
+                </div>
+
+                <!-- Resume List -->
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-xl font-semibold mb-4">Uploaded Resumes</h2>
+                    <div class="space-y-4">
+                        <div v-for="resume in resumes" :key="resume.id" class="border rounded-lg p-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-medium">{{ resume.name }}</h3>
+                                    <p class="text-sm text-gray-500">Match Score: {{ resume.matchScore }}%</p>
+                                </div>
+                                <select v-model="resume.status" class="text-sm border rounded-md">
+                                    <option value="pending">Pending</option>
+                                    <option value="selected">Selected</option>
+                                    <option value="rejected">Rejected</option>
+                                    <option value="hold">On Hold</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-lg shadow-sm p-6">
+                        <h3 class="text-lg font-medium mb-2">Total Resumes</h3>
+                        <p class="text-3xl font-bold text-indigo-600">{{ totalResumes }}</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm p-6">
+                        <h3 class="text-lg font-medium mb-2">Selected</h3>
+                        <p class="text-3xl font-bold text-green-600">{{ selectedCount }}</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm p-6">
+                        <h3 class="text-lg font-medium mb-2">Average Match Score</h3>
+                        <p class="text-3xl font-bold text-blue-600">{{ avgMatchScore }}%</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    isLoggedIn: false,
+                    isLoginView: true,
+                    user: null,
+                    authForm: {
+                        email: '',
+                        password: ''
+                    },
+                    resumes: [],
+                    totalResumes: 0,
+                    selectedCount: 0,
+                    avgMatchScore: 0
+                }
+            },
+            methods: {
+                toggleAuthView() {
+                    this.isLoginView = !this.isLoginView
+                },
+                handleAuth() {
+                    // Simulate authentication
+                    this.isLoggedIn = true
+                    this.user = { email: this.authForm.email }
+                    this.loadDummyData()
+                },
+                logout() {
+                    this.isLoggedIn = false
+                    this.user = null
+                    this.resumes = []
+                },
+                triggerFileInput() {
+                    this.$refs.fileInput.click()
+                },
+                handleDragOver(e) {
+                    e.target.classList.add('active')
+                },
+                handleDrop(e) {
+                    e.target.classList.remove('active')
+                    const files = e.dataTransfer.files
+                    this.processFiles(files)
+                },
+                handleFileSelect(e) {
+                    const files = e.target.files
+                    this.processFiles(files)
+                },
+                processFiles(files) {
+                    // Simulate file processing
+                    Array.from(files).forEach(file => {
+                        const matchScore = Math.floor(Math.random() * 40) + 60
+                        this.resumes.push({
+                            id: Date.now(),
+                            name: file.name,
+                            matchScore: matchScore,
+                            status: 'pending'
+                        })
+                    })
+                    this.updateAnalytics()
+                },
+                loadDummyData() {
+                    // Load some dummy data for demonstration
+                    this.resumes = [
+                        { id: 1, name: 'John_Resume.pdf', matchScore: 85, status: 'selected' },
+                        { id: 2, name: 'Sarah_Resume.pdf', matchScore: 75, status: 'hold' },
+                        { id: 3, name: 'Mike_Resume.pdf', matchScore: 65, status: 'pending' }
+                    ]
+                    this.updateAnalytics()
+                },
+                updateAnalytics() {
+                    this.totalResumes = this.resumes.length
+                    this.selectedCount = this.resumes.filter(r => r.status === 'selected').length
+                    this.avgMatchScore = Math.round(
+                        this.resumes.reduce((acc, curr) => acc + curr.matchScore, 0) / this.resumes.length
+                    )
+                }
+            }
+        }).mount('#app')
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
